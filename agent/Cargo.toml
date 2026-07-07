@@ -28,6 +28,7 @@ tokio-rustls = { workspace = true }
 
 # Netlink for VXLAN management (Linux only)
 futures = "0.3"
+netlink-packet-route = "0.19"
 
 # Shutdown coordination
 tokio-util = { version = "0.7", features = ["rt"] }

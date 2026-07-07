@@ -627,12 +627,6 @@ enum K8sCmd {
         #[arg(long, default_value_t = false)]
         non_interactive: bool,
     },
-    Capabilities {
-        #[arg(long, default_value_t = false)]
-        json: bool,
-        #[arg(long, default_value_t = false)]
-        non_interactive: bool,
-    },
     Schema {
         #[arg(long, default_value_t = false)]
         json: bool,
@@ -2648,17 +2642,6 @@ async fn run_k8s(client: &Client, cmd: K8sCmd) -> std::result::Result<(), K8sFai
                     }
                 }
             }
-            Ok(())
-        }
-        K8sCmd::Capabilities {
-            json,
-            non_interactive,
-        } => {
-            let _ = non_interactive;
-            let response = k8s_call(client, Method::GET, "/api/k8s/capabilities", None, None)
-                .await
-                .map_err(|e| map_k8s_transport_or_auth(e, EXIT_GENERIC_FAILURE))?;
-            k8s_emit_response(&response, json, false)?;
             Ok(())
         }
         K8sCmd::Schema {

@@ -23,7 +23,6 @@ As of 2026-03-01, Quilt backend and `quiltc` together provide a complete backend
 - `quiltc k8s get resource <resource_id> --cluster-id <id>`
 - `quiltc k8s delete <resource_id> --cluster-id <id>`
 - `quiltc k8s export --cluster-id <id> -o yaml|json`
-- `quiltc k8s capabilities`
 - `quiltc k8s schema`
 
 Behavior implemented in CLI (against completed backend workflows):

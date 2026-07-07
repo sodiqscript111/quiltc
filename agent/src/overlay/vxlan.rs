@@ -8,35 +8,41 @@ use anyhow::Result;
 
 #[cfg(target_os = "linux")]
 use anyhow::Context;
+#[cfg(target_os = "linux")]
+use futures::TryStreamExt;
 use std::collections::HashMap;
+#[cfg(target_os = "linux")]
+use std::net::IpAddr;
 use std::net::Ipv4Addr;
 use tracing::{debug, info, warn};
 
 #[cfg(target_os = "linux")]
-use rtnetlink::{new_connection, Handle, IpVersion};
+use netlink_packet_route::{
+    neighbour::{NeighbourAddress, NeighbourAttribute, NeighbourMessage},
+    AddressFamily,
+};
+#[cfg(target_os = "linux")]
+use rtnetlink::{new_connection, Handle};
 
 const VXLAN_INTERFACE: &str = "vxlan100";
 const VXLAN_VNI: u32 = 100;
-const VXLAN_PORT: u16 = 4789;
 const BRIDGE_INTERFACE: &str = "quilt0";
 
 #[cfg(target_os = "linux")]
 pub struct VxlanManager {
     handle: Handle,
-    local_ip: Ipv4Addr,
     peers: HashMap<String, Ipv4Addr>, // subnet -> peer_host_ip
 }
 
 #[cfg(all(not(target_os = "linux"), feature = "dev-stubs"))]
 pub struct VxlanManager {
-    local_ip: Ipv4Addr,
     peers: HashMap<String, Ipv4Addr>,
 }
 
 #[cfg(target_os = "linux")]
 impl VxlanManager {
     /// Create a new VXLAN manager
-    pub async fn new(local_ip: Ipv4Addr) -> Result<Self> {
+    pub async fn new(_local_ip: Ipv4Addr) -> Result<Self> {
         let (connection, handle, _) =
             new_connection().context("Failed to create netlink connection")?;
 
@@ -45,7 +51,6 @@ impl VxlanManager {
 
         Ok(Self {
             handle,
-            local_ip,
             peers: HashMap::new(),
         })
     }
@@ -120,10 +125,7 @@ impl VxlanManager {
 
     /// Create VXLAN interface using rtnetlink
     async fn create_vxlan_interface(&self) -> Result<()> {
-        debug!(
-            "Creating VXLAN interface with VNI={}, port={}",
-            VXLAN_VNI, VXLAN_PORT
-        );
+        debug!("Creating VXLAN interface with VNI={}", VXLAN_VNI);
 
         // Create VXLAN link
         self.handle
@@ -194,7 +196,7 @@ impl VxlanManager {
         self.handle
             .link()
             .set(vxlan_index)
-            .master(bridge_index)
+            .controller(bridge_index)
             .execute()
             .await
             .context("Failed to attach to bridge")?;
@@ -224,9 +226,8 @@ impl VxlanManager {
         // This makes VXLAN forward all unknown MACs to this peer
         self.handle
             .neighbours()
-            .add(if_index)
-            .lladdr([0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
-            .destination(peer_host_ip)
+            .add_bridge(if_index, &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+            .destination(IpAddr::V4(peer_host_ip))
             .execute()
             .await
             .context("Failed to add FDB entry")?;
@@ -252,12 +253,23 @@ impl VxlanManager {
             .context("VXLAN interface not found")?;
         let if_index = link.header.index;
 
-        // Remove FDB entry
+        let mut message = NeighbourMessage::default();
+        message.header.family = AddressFamily::Bridge;
+        message.header.ifindex = if_index;
+        message
+            .attributes
+            .push(NeighbourAttribute::LinkLocalAddress(vec![
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            ]));
+        message
+            .attributes
+            .push(NeighbourAttribute::Destination(NeighbourAddress::Inet(
+                peer_host_ip,
+            )));
+
         self.handle
             .neighbours()
-            .del(if_index)
-            .lladdr([0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
-            .destination(peer_host_ip)
+            .del(message)
             .execute()
             .await
             .context("Failed to remove FDB entry")?;
@@ -278,10 +290,9 @@ impl VxlanManager {
 
 #[cfg(all(not(target_os = "linux"), feature = "dev-stubs"))]
 impl VxlanManager {
-    pub async fn new(local_ip: Ipv4Addr) -> Result<Self> {
+    pub async fn new(_local_ip: Ipv4Addr) -> Result<Self> {
         warn!("VXLAN is only supported on Linux - running in stub mode");
         Ok(Self {
-            local_ip,
             peers: HashMap::new(),
         })
     }

@@ -1,11 +1,23 @@
 # quiltc
 
-`quiltc` is Quilt's Kubernetes-like CLI. It drives a desired-state control plane (clusters, nodes, workloads, placements) and a runtime surface (containers, volumes, events) via HTTP.
+`quiltc` is Quilt's Kubernetes-like cluster-management layer.
+
+Repo roles:
+- `cli/`: user-facing CLI over Quilt HTTP APIs
+- `control/`: higher-level orchestrator/controller
+- `agent/`: node-local mesh agent
+
+Authority boundary:
+- `quilt-prod` is the only source of truth for clusters, nodes, placements, allocations, and runtime/container state
+- `quiltc/control` consumes that HTTP control plane and drives orchestration workflows
+- `quiltc/agent` consumes backend node/peer assignments and realizes mesh state locally against the Quilt daemon
 
 ## Build
 
 ```bash
 cargo build -p quiltc
+cargo build -p quilt-mesh-control
+cargo build -p quilt-mesh-agent
 ```
 
 Binary path on macOS (Apple Silicon): `target/aarch64-apple-darwin/debug/quiltc`
@@ -183,7 +195,6 @@ quiltc k8s get resources --cluster-id <cluster_id> --kind Deployment
 quiltc k8s get resource <resource_id> --cluster-id <cluster_id>
 quiltc k8s delete <resource_id> --cluster-id <cluster_id>
 quiltc k8s export --cluster-id <cluster_id> -o yaml
-quiltc k8s capabilities
 quiltc k8s schema
 ```
 

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["control", "agent", "runtime", "cli", "tools/gen-certs", "integration-tests"]
+members = ["control", "agent", "cli", "tools/gen-certs"]
 
 [workspace.dependencies]
 # Async runtime

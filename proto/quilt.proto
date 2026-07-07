@@ -2,81 +2,38 @@ syntax = "proto3";
 
 package quilt;
 
-// ============================================================================
-// Quilt Runtime Service
-// ============================================================================
-// Implemented by the Quilt runtime (runtime/src/service.rs).
-// Called by the Quilt Mesh agent (agent/src/quilt_client/mod.rs).
-
-service QuiltRuntime {
-  // Configure the node's subnet for container IP allocation
-  // This tells Quilt to only allocate IPs from the given subnet (e.g., "10.42.1.0/24")
-  rpc ConfigureNodeSubnet(ConfigureNodeSubnetRequest) returns (ConfigureNodeSubnetResponse);
-
-  // Inject a route for a remote subnet via the overlay interface
-  // This adds a kernel route so traffic to remote containers routes through VXLAN
-  // Example: destination="10.42.2.0/24", via_interface="vxlan100"
-  rpc InjectRoute(InjectRouteRequest) returns (InjectRouteResponse);
-
-  // Remove a route for a remote subnet
-  // Called when a peer node leaves the cluster
-  rpc RemoveRoute(RemoveRouteRequest) returns (RemoveRouteResponse);
+service QuiltService {
+  rpc GetNodeNetworking(GetNodeNetworkingRequest) returns (GetNodeNetworkingResponse);
+  rpc UpsertHostRoute(UpsertHostRouteRequest) returns (UpsertHostRouteResponse);
+  rpc DeleteHostRoute(DeleteHostRouteRequest) returns (DeleteHostRouteResponse);
 }
 
-// ============================================================================
-// ConfigureNodeSubnet RPC
-// ============================================================================
+message GetNodeNetworkingRequest {}
 
-message ConfigureNodeSubnetRequest {
-  // The subnet to allocate container IPs from (CIDR notation)
-  // Example: "10.42.1.0/24"
-  string subnet = 1;
-}
-
-message ConfigureNodeSubnetResponse {
-  // true if configuration succeeded
+message GetNodeNetworkingResponse {
   bool success = 1;
-
-  // Error message if success=false
   string error = 2;
+  string pod_cidr = 3;
+  string bridge_name = 4;
+  string bridge_ip = 5;
+  uint32 dns_port = 6;
 }
 
-// ============================================================================
-// InjectRoute RPC
-// ============================================================================
-
-message InjectRouteRequest {
-  // Destination subnet (CIDR notation)
-  // Example: "10.42.2.0/24"
+message UpsertHostRouteRequest {
   string destination = 1;
-
-  // Interface to route traffic through
-  // Example: "vxlan100"
   string via_interface = 2;
 }
 
-message InjectRouteResponse {
-  // true if route injection succeeded
+message UpsertHostRouteResponse {
   bool success = 1;
-
-  // Error message if success=false
   string error = 2;
 }
 
-// ============================================================================
-// RemoveRoute RPC
-// ============================================================================
-
-message RemoveRouteRequest {
-  // Destination subnet to remove route for
-  // Example: "10.42.2.0/24"
+message DeleteHostRouteRequest {
   string destination = 1;
 }
 
-message RemoveRouteResponse {
-  // true if route removal succeeded
+message DeleteHostRouteResponse {
   bool success = 1;
-
-  // Error message if success=false
   string error = 2;
 }

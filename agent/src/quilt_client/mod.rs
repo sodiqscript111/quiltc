@@ -3,23 +3,23 @@ use tracing::info;
 
 use crate::types::TlsConfig;
 
-// Include generated proto code
 pub mod quilt {
     tonic::include_proto!("quilt");
 }
 
-use quilt::quilt_runtime_client::QuiltRuntimeClient;
-use quilt::{ConfigureNodeSubnetRequest, InjectRouteRequest, RemoveRouteRequest};
+use quilt::quilt_service_client::QuiltServiceClient;
+use quilt::{
+    DeleteHostRouteRequest, GetNodeNetworkingRequest, GetNodeNetworkingResponse,
+    UpsertHostRouteRequest,
+};
 
-/// Client for Quilt runtime gRPC API
 pub struct QuiltClient {
-    client: QuiltRuntimeClient<tonic::transport::Channel>,
+    client: QuiltServiceClient<tonic::transport::Channel>,
 }
 
 impl QuiltClient {
-    /// Create a new Quilt client
     pub async fn new(quilt_endpoint: String, tls: Option<&TlsConfig>) -> Result<Self> {
-        info!("Connecting to Quilt runtime at {}", quilt_endpoint);
+        info!("Connecting to Quilt daemon at {}", quilt_endpoint);
 
         let channel = if let Some(tls) = tls {
             let ca_pem = std::fs::read(&tls.ca_cert)
@@ -41,69 +41,65 @@ impl QuiltClient {
                 .tls_config(tls_config)?
                 .connect()
                 .await
-                .context("Failed to connect to Quilt runtime (TLS)")?
+                .context("Failed to connect to Quilt daemon (TLS)")?
         } else {
             tonic::transport::Channel::from_shared(quilt_endpoint)?
                 .connect()
                 .await
-                .context("Failed to connect to Quilt runtime")?
+                .context("Failed to connect to Quilt daemon")?
         };
 
-        let client = QuiltRuntimeClient::new(channel);
-
-        info!("Successfully connected to Quilt runtime");
-
-        Ok(Self { client })
+        Ok(Self {
+            client: QuiltServiceClient::new(channel),
+        })
     }
 
-    /// Configure the node's subnet for container IP allocation
-    pub async fn configure_node_subnet(&mut self, subnet: String) -> Result<()> {
-        info!("Calling ConfigureNodeSubnet(subnet={})", subnet);
-
-        let req = tonic::Request::new(ConfigureNodeSubnetRequest { subnet });
-        let resp = self.client.configure_node_subnet(req).await?.into_inner();
-
+    pub async fn get_node_networking(&mut self) -> Result<GetNodeNetworkingResponse> {
+        info!("Calling GetNodeNetworking()");
+        let resp = self
+            .client
+            .get_node_networking(tonic::Request::new(GetNodeNetworkingRequest {}))
+            .await?
+            .into_inner();
         if !resp.success {
-            bail!("ConfigureNodeSubnet failed: {}", resp.error);
+            bail!("GetNodeNetworking failed: {}", resp.error);
         }
-
-        info!("ConfigureNodeSubnet succeeded");
-        Ok(())
+        Ok(resp)
     }
 
-    /// Inject a route for a remote subnet
-    pub async fn inject_route(&mut self, destination: String, via_interface: String) -> Result<()> {
+    pub async fn upsert_host_route(
+        &mut self,
+        destination: String,
+        via_interface: String,
+    ) -> Result<()> {
         info!(
-            "Calling InjectRoute(destination={}, via={})",
+            "Calling UpsertHostRoute(destination={}, via={})",
             destination, via_interface
         );
-
-        let req = tonic::Request::new(InjectRouteRequest {
-            destination,
-            via_interface,
-        });
-        let resp = self.client.inject_route(req).await?.into_inner();
-
+        let resp = self
+            .client
+            .upsert_host_route(tonic::Request::new(UpsertHostRouteRequest {
+                destination,
+                via_interface,
+            }))
+            .await?
+            .into_inner();
         if !resp.success {
-            bail!("InjectRoute failed: {}", resp.error);
+            bail!("UpsertHostRoute failed: {}", resp.error);
         }
-
-        info!("InjectRoute succeeded");
         Ok(())
     }
 
-    /// Remove a route for a remote subnet
-    pub async fn remove_route(&mut self, destination: String) -> Result<()> {
-        info!("Calling RemoveRoute(destination={})", destination);
-
-        let req = tonic::Request::new(RemoveRouteRequest { destination });
-        let resp = self.client.remove_route(req).await?.into_inner();
-
+    pub async fn delete_host_route(&mut self, destination: String) -> Result<()> {
+        info!("Calling DeleteHostRoute(destination={})", destination);
+        let resp = self
+            .client
+            .delete_host_route(tonic::Request::new(DeleteHostRouteRequest { destination }))
+            .await?
+            .into_inner();
         if !resp.success {
-            bail!("RemoveRoute failed: {}", resp.error);
+            bail!("DeleteHostRoute failed: {}", resp.error);
         }
-
-        info!("RemoveRoute succeeded");
         Ok(())
     }
 }
