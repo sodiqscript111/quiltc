@@ -50,6 +50,10 @@ struct Args {
     /// Elasticity control API key (sent as X-Api-Key)
     #[arg(long, env = "CONTROL_API_KEY")]
     control_api_key: Option<String>,
+
+    /// Enable local P2P gossip-based scheduler (replaces centralized placement)
+    #[arg(long)]
+    local_scheduler: bool,
 }
 
 #[tokio::main]
@@ -81,6 +85,7 @@ async fn main() -> Result<()> {
     let execution_config = ExecutionConfig {
         control_base_url: args.control_base_url,
         control_api_key: args.control_api_key,
+        local_scheduler: args.local_scheduler,
     };
 
     orchestrator::start_loops(db, execution_config).await?;

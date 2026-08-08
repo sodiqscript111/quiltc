@@ -37,6 +37,7 @@ const RC_ORCH_DEPENDENCY_UNAVAILABLE: &str = "ORCH_DEPENDENCY_UNAVAILABLE";
 pub struct ExecutionConfig {
     pub control_base_url: Option<String>,
     pub control_api_key: Option<String>,
+    pub local_scheduler: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -1317,37 +1318,56 @@ async fn process_action(
             .await
             .map(Some)
         }
-        "SetPlacementPreference" => dispatch_control_operation(
-            http,
-            cfg,
-            &action,
-            format!(
-                "/api/elasticity/control/workloads/{}/placement-preference",
-                action
-                    .payload_json
-                    .get("workload_id")
-                    .and_then(Value::as_str)
-                    .map(str::trim)
-                    .filter(|v| !v.is_empty())
-                    .ok_or_else(|| anyhow::anyhow!(RC_INVALID_ARGUMENT))?
-            ),
-            json!({
-                "node_group": action
-                    .payload_json
-                    .get("node_group")
-                    .and_then(Value::as_str)
-                    .map(str::trim)
-                    .filter(|v| !v.is_empty())
-                    .ok_or_else(|| anyhow::anyhow!(RC_INVALID_ARGUMENT))?,
-                "anti_affinity": action
-                    .payload_json
-                    .get("anti_affinity")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false)
-            }),
-        )
-        .await
-        .map(Some),
+        "SetPlacementPreference" => {
+            if cfg.local_scheduler {
+                let workload_id = action.payload_json.get("workload_id").and_then(Value::as_str).unwrap_or("unknown");
+                if let Some(best_node) = super::scheduler::local_schedule_workload(&action.tenant_id, workload_id) {
+                    tracing::info!("Local scheduler picked node {} for workload {}", best_node, workload_id);
+                    Ok(Some(RuntimeOperation {
+                        operation_id: format!("local-placement-{}", uuid::Uuid::new_v4()),
+                        operation_type: Some("SetPlacementPreference".to_string()),
+                        status: "succeeded".to_string(),
+                        reason_code: None,
+                        reason_message: Some(format!("Assigned to node {}", best_node)),
+                    }))
+                } else {
+                    tracing::warn!("Local scheduler could not find a suitable node");
+                    Err(anyhow::anyhow!(RC_RESOURCE_PRESSURE))
+                }
+            } else {
+                dispatch_control_operation(
+                    http,
+                    cfg,
+                    &action,
+                    format!(
+                        "/api/elasticity/control/workloads/{}/placement-preference",
+                        action
+                            .payload_json
+                            .get("workload_id")
+                            .and_then(Value::as_str)
+                            .map(str::trim)
+                            .filter(|v| !v.is_empty())
+                            .ok_or_else(|| anyhow::anyhow!(RC_INVALID_ARGUMENT))?
+                    ),
+                    json!({
+                        "node_group": action
+                            .payload_json
+                            .get("node_group")
+                            .and_then(Value::as_str)
+                            .map(str::trim)
+                            .filter(|v| !v.is_empty())
+                            .ok_or_else(|| anyhow::anyhow!(RC_INVALID_ARGUMENT))?,
+                        "anti_affinity": action
+                            .payload_json
+                            .get("anti_affinity")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false)
+                    }),
+                )
+                .await
+                .map(Some)
+            }
+        },
         "ScaleNodeGroupUp" | "ScaleNodeGroupDown" => {
             dispatch_control_operation(
                 http,

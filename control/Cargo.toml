@@ -15,6 +15,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 time = { workspace = true }
 futures = { workspace = true }
+rand = { workspace = true }
 
 # HTTP framework
 axum = "0.7"
